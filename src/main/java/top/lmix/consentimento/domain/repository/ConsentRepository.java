@@ -1,4 +1,4 @@
-package top.lmix.consentimento.repository;
+package top.lmix.consentimento.domain.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
