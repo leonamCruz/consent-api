@@ -26,7 +26,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/consents")
 @RequiredArgsConstructor
-@Tag(name = "Consents", description = "Operacoes de gerenciamento de consentimentos")
+@Tag(name = "Consents", description = "Operações de gerenciamento de consentimentos")
 public class ConsentController {
 
     private final ConsentService consentService;
