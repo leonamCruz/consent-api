@@ -13,15 +13,21 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import top.lmix.consentimento.domain.dto.ConsentRequest;
+import top.lmix.consentimento.domain.entity.ConsentAuditEntity;
 import top.lmix.consentimento.domain.entity.ConsentEntity;
+import top.lmix.consentimento.domain.enums.ConsentAuditAction;
 import top.lmix.consentimento.domain.enums.Status;
+import top.lmix.consentimento.domain.repository.ConsentAuditRepository;
 import top.lmix.consentimento.domain.repository.ConsentRepository;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,9 +59,13 @@ class ConsentControllerIntegrationTest {
     @Autowired
     private ConsentRepository consentRepository;
 
+    @Autowired
+    private ConsentAuditRepository consentAuditRepository;
+
     @BeforeEach
     void setUp() {
         consentRepository.deleteAll();
+        consentAuditRepository.deleteAll();
     }
 
     @Test
@@ -93,6 +103,15 @@ class ConsentControllerIntegrationTest {
 
         mockMvc.perform(delete("/consents/{id}", created.getId()))
                 .andExpect(status().isNoContent());
+
+        List<ConsentAuditEntity> audits = consentAuditRepository.findByConsentIdOrderByChangedAtAsc(created.getId());
+        assertEquals(2, audits.size());
+        assertEquals(ConsentAuditAction.UPDATED, audits.get(0).getAction());
+        assertEquals("12345678909", audits.get(0).getBeforeState().getCpf());
+        assertEquals("98765432100", audits.get(0).getAfterState().getCpf());
+        assertEquals(ConsentAuditAction.DELETED, audits.get(1).getAction());
+        assertEquals("98765432100", audits.get(1).getBeforeState().getCpf());
+        assertNull(audits.get(1).getAfterState());
 
         mockMvc.perform(get("/consents/{id}", created.getId()))
                 .andExpect(status().isNotFound());
