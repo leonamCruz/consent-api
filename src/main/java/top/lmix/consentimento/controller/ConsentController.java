@@ -18,6 +18,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import top.lmix.consentimento.domain.dto.ApiErrorResponse;
 import top.lmix.consentimento.domain.dto.ConsentRequest;
 import top.lmix.consentimento.domain.entity.ConsentEntity;
+import top.lmix.consentimento.service.ConsentCreationResult;
 import top.lmix.consentimento.service.ConsentService;
 
 import java.net.URI;
@@ -34,7 +35,13 @@ public class ConsentController {
     @PostMapping
     @Operation(summary = "Criar um novo consentimento")
     @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Consentimento ja existente retornado de forma idempotente"),
             @ApiResponse(responseCode = "201", description = "Consentimento criado"),
+            @ApiResponse(
+                    responseCode = "409",
+                    description = "CPF ja utilizado por outro consentimento",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
             @ApiResponse(
                     responseCode = "400",
                     description = "Payload invalido",
@@ -42,13 +49,17 @@ public class ConsentController {
             )
     })
     public ResponseEntity<ConsentEntity> create(@RequestBody @Valid ConsentRequest entity) {
-        ConsentEntity savedConsent = consentService.create(entity);
+        ConsentCreationResult result = consentService.create(entity);
+        ConsentEntity savedConsent = result.consent();
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(savedConsent.getId())
                 .toUri();
 
-        return ResponseEntity.created(location).body(savedConsent);
+        if (result.created()) {
+            return ResponseEntity.created(location).body(savedConsent);
+        }
+        return ResponseEntity.ok().location(location).body(savedConsent);
     }
 
     @GetMapping
@@ -82,6 +93,11 @@ public class ConsentController {
             @ApiResponse(
                     responseCode = "400",
                     description = "Payload invalido",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "409",
+                    description = "CPF ja utilizado por outro consentimento",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             ),
             @ApiResponse(

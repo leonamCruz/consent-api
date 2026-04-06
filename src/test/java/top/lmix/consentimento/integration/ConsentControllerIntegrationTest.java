@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -46,6 +47,8 @@ class ConsentControllerIntegrationTest {
 
     @DynamicPropertySource
     static void configureMongoProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.mongodb.uri", mongoDBContainer::getReplicaSetUrl);
+        registry.add("spring.mongodb.representation.uuid", () -> "standard");
         registry.add("spring.data.mongodb.uri", mongoDBContainer::getReplicaSetUrl);
         registry.add("spring.data.mongodb.uuid-representation", () -> "standard");
     }
@@ -76,7 +79,7 @@ class ConsentControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", org.hamcrest.Matchers.matchesPattern(".*/consents/.*")))
+                .andExpect(header().string("Location", matchesPattern(".*/consents/.*")))
                 .andExpect(jsonPath("$.cpf").value("12345678909"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.additionalInfo").value("first"))
@@ -133,6 +136,71 @@ class ConsentControllerIntegrationTest {
                 .andExpect(jsonPath("$.totalPages").value(2))
                 .andExpect(jsonPath("$.content[0].cpf").value("33333333333"))
                 .andExpect(jsonPath("$.content[1].cpf").value("22222222222"));
+    }
+
+    @Test
+    void shouldReturnExistingConsentForIdempotentCreate() throws Exception {
+        ConsentRequest request = new ConsentRequest("12345678909", Status.ACTIVE, "first");
+
+        String firstResponseBody = mockMvc.perform(post("/consents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", matchesPattern(".*/consents/.*")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String secondResponseBody = mockMvc.perform(post("/consents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Location", matchesPattern(".*/consents/.*")))
+                .andExpect(jsonPath("$.cpf").value("12345678909"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.additionalInfo").value("first"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        ConsentEntity firstConsent = objectMapper.readValue(firstResponseBody, ConsentEntity.class);
+        ConsentEntity secondConsent = objectMapper.readValue(secondResponseBody, ConsentEntity.class);
+
+        assertEquals(firstConsent.getId(), secondConsent.getId());
+        assertEquals(1, consentRepository.count());
+    }
+
+    @Test
+    void shouldRejectCreateWhenCpfAlreadyExistsWithDifferentPayload() throws Exception {
+        ConsentRequest firstRequest = new ConsentRequest("12345678909", Status.ACTIVE, "first");
+        ConsentRequest secondRequest = new ConsentRequest("12345678909", Status.REVOKED, "changed");
+
+        mockMvc.perform(post("/consents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(firstRequest)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/consents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(secondRequest)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("A consent already exists for cpf 12345678909. Reuse the existing consent or update it explicitly."));
+
+        assertEquals(1, consentRepository.count());
+    }
+
+    @Test
+    void shouldRejectUpdateWhenCpfAlreadyExistsForAnotherConsent() throws Exception {
+        ConsentEntity firstConsent = consentRepository.save(consent("12345678909", Status.ACTIVE, "one", LocalDateTime.now().minusHours(2)));
+        consentRepository.save(consent("98765432100", Status.REVOKED, "two", LocalDateTime.now().minusHours(1)));
+
+        ConsentRequest updateRequest = new ConsentRequest("98765432100", Status.EXPIRED, "updated");
+
+        mockMvc.perform(put("/consents/{id}", firstConsent.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("A consent already exists for cpf 98765432100. Reuse the existing consent or update it explicitly."));
     }
 
     private ConsentEntity consent(String cpf, Status status, String additionalInfo, LocalDateTime creationDateTime) {

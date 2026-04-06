@@ -25,11 +25,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -49,10 +52,13 @@ class ConsentServiceTest {
     @Test
     void createShouldGenerateIdAndCreationDateTimeBeforeSaving() {
         ConsentRequest request = new ConsentRequest("12345678909", Status.ACTIVE, "extra");
+        when(consentRepository.findByCpf(request.cpf())).thenReturn(Optional.empty());
         when(consentRepository.save(any(ConsentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        ConsentEntity saved = consentService.create(request);
+        ConsentCreationResult result = consentService.create(request);
+        ConsentEntity saved = result.consent();
 
+        assertTrue(result.created());
         assertNotNull(saved.getId());
         assertNotNull(saved.getCreationDateTime());
         assertEquals(request.cpf(), saved.getCpf());
@@ -63,6 +69,43 @@ class ConsentServiceTest {
         verify(consentRepository).save(captor.capture());
         assertNotNull(captor.getValue().getId());
         assertNotNull(captor.getValue().getCreationDateTime());
+        verifyNoInteractions(consentAuditRepository);
+    }
+
+    @Test
+    void createShouldReturnExistingConsentWhenRequestIsIdempotent() {
+        ConsentRequest request = new ConsentRequest("12345678909", Status.ACTIVE, "extra");
+        ConsentEntity existing = new ConsentEntity();
+        existing.setId(UUID.randomUUID());
+        existing.setCpf(request.cpf());
+        existing.setStatus(request.status());
+        existing.setAdditionalInfo(request.additionalInfo());
+        existing.setCreationDateTime(LocalDateTime.now().minusDays(1));
+        when(consentRepository.findByCpf(request.cpf())).thenReturn(Optional.of(existing));
+
+        ConsentCreationResult result = consentService.create(request);
+
+        assertFalse(result.created());
+        assertSame(existing, result.consent());
+        verify(consentRepository, never()).save(any(ConsentEntity.class));
+        verifyNoInteractions(consentAuditRepository);
+    }
+
+    @Test
+    void createShouldRejectDifferentPayloadForExistingCpf() {
+        ConsentRequest request = new ConsentRequest("12345678909", Status.ACTIVE, "extra");
+        ConsentEntity existing = new ConsentEntity();
+        existing.setId(UUID.randomUUID());
+        existing.setCpf(request.cpf());
+        existing.setStatus(Status.REVOKED);
+        existing.setAdditionalInfo("different");
+        existing.setCreationDateTime(LocalDateTime.now().minusDays(1));
+        when(consentRepository.findByCpf(request.cpf())).thenReturn(Optional.of(existing));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> consentService.create(request));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        verify(consentRepository, never()).save(any(ConsentEntity.class));
         verifyNoInteractions(consentAuditRepository);
     }
 
@@ -92,6 +135,7 @@ class ConsentServiceTest {
         ConsentRequest request = new ConsentRequest("98765432100", Status.REVOKED, "new");
 
         when(consentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(consentRepository.findByCpf(request.cpf())).thenReturn(Optional.empty());
         when(consentRepository.save(existing)).thenReturn(existing);
 
         ConsentEntity updated = consentService.update(id, request);
@@ -109,6 +153,32 @@ class ConsentServiceTest {
         assertEquals(ConsentAuditAction.UPDATED, captor.getValue().getAction());
         assertEquals("12345678909", captor.getValue().getBeforeState().getCpf());
         assertEquals("98765432100", captor.getValue().getAfterState().getCpf());
+    }
+
+    @Test
+    void updateShouldRejectCpfAlreadyUsedByAnotherConsent() {
+        UUID id = UUID.randomUUID();
+        ConsentEntity existing = new ConsentEntity();
+        existing.setId(id);
+        existing.setCpf("12345678909");
+        existing.setStatus(Status.ACTIVE);
+        existing.setAdditionalInfo("old");
+        existing.setCreationDateTime(LocalDateTime.now().minusDays(1));
+
+        ConsentEntity anotherConsent = new ConsentEntity();
+        anotherConsent.setId(UUID.randomUUID());
+        anotherConsent.setCpf("98765432100");
+
+        ConsentRequest request = new ConsentRequest("98765432100", Status.REVOKED, "new");
+
+        when(consentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(consentRepository.findByCpf(request.cpf())).thenReturn(Optional.of(anotherConsent));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> consentService.update(id, request));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        verify(consentRepository, never()).save(any(ConsentEntity.class));
+        verifyNoInteractions(consentAuditRepository);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package top.lmix.consentimento.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -46,6 +47,14 @@ public class ApiExceptionHandler {
                 request.getRequestURI(),
                 List.of()
         );
+    }
+
+    @ExceptionHandler(DuplicateKeyException.class)
+    public ResponseEntity<ApiErrorResponse> handleDuplicateKeyException(
+            DuplicateKeyException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.CONFLICT, "Duplicate key violation", request.getRequestURI(), List.of());
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
