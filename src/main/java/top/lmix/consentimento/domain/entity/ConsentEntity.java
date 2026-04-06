@@ -34,6 +34,6 @@ public class ConsentEntity {
     @Column(nullable = false, updatable = false)
     private LocalDateTime creationDateTime;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 50)
     private String additionalInfo;
 }
