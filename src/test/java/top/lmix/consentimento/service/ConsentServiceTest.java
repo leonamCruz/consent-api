@@ -12,8 +12,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import top.lmix.consentimento.domain.dto.ConsentRequest;
+import top.lmix.consentimento.domain.entity.ConsentAuditEntity;
 import top.lmix.consentimento.domain.entity.ConsentEntity;
+import top.lmix.consentimento.domain.enums.ConsentAuditAction;
 import top.lmix.consentimento.domain.enums.Status;
+import top.lmix.consentimento.domain.repository.ConsentAuditRepository;
 import top.lmix.consentimento.domain.repository.ConsentRepository;
 
 import java.time.LocalDateTime;
@@ -23,10 +26,12 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +39,9 @@ class ConsentServiceTest {
 
     @Mock
     private ConsentRepository consentRepository;
+
+    @Mock
+    private ConsentAuditRepository consentAuditRepository;
 
     @InjectMocks
     private ConsentService consentService;
@@ -55,6 +63,7 @@ class ConsentServiceTest {
         verify(consentRepository).save(captor.capture());
         assertNotNull(captor.getValue().getId());
         assertNotNull(captor.getValue().getCreationDateTime());
+        verifyNoInteractions(consentAuditRepository);
     }
 
     @Test
@@ -93,6 +102,13 @@ class ConsentServiceTest {
         assertEquals(request.status(), updated.getStatus());
         assertEquals(request.additionalInfo(), updated.getAdditionalInfo());
         verify(consentRepository).save(existing);
+
+        ArgumentCaptor<ConsentAuditEntity> captor = ArgumentCaptor.forClass(ConsentAuditEntity.class);
+        verify(consentAuditRepository).save(captor.capture());
+        assertEquals(id, captor.getValue().getConsentId());
+        assertEquals(ConsentAuditAction.UPDATED, captor.getValue().getAction());
+        assertEquals("12345678909", captor.getValue().getBeforeState().getCpf());
+        assertEquals("98765432100", captor.getValue().getAfterState().getCpf());
     }
 
     @Test
@@ -100,11 +116,21 @@ class ConsentServiceTest {
         UUID id = UUID.randomUUID();
         ConsentEntity existing = new ConsentEntity();
         existing.setId(id);
+        existing.setCpf("12345678909");
+        existing.setStatus(Status.ACTIVE);
+        existing.setAdditionalInfo("old");
+        existing.setCreationDateTime(LocalDateTime.now().minusDays(1));
         when(consentRepository.findById(id)).thenReturn(Optional.of(existing));
 
         consentService.delete(id);
 
         verify(consentRepository).delete(existing);
+        ArgumentCaptor<ConsentAuditEntity> captor = ArgumentCaptor.forClass(ConsentAuditEntity.class);
+        verify(consentAuditRepository).save(captor.capture());
+        assertEquals(id, captor.getValue().getConsentId());
+        assertEquals(ConsentAuditAction.DELETED, captor.getValue().getAction());
+        assertEquals("12345678909", captor.getValue().getBeforeState().getCpf());
+        assertNull(captor.getValue().getAfterState());
     }
 
     @Test
