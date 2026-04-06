@@ -9,10 +9,10 @@
         <relativePath/>
     </parent>
     <groupId>top.lmix</groupId>
-    <artifactId>consentimento</artifactId>
+    <artifactId>consent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>consentimento</name>
-    <description>consentimento</description>
+    <name>consent</name>
+    <description>consent</description>
     <url/>
     <licenses>
         <license/>

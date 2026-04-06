@@ -4,10 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class ConsentimentoApplication {
+public class ConsentApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(ConsentimentoApplication.class, args);
+        SpringApplication.run(ConsentApplication.class, args);
     }
 
 }
