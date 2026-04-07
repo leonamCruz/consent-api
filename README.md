@@ -1,7 +1,7 @@
-# 📘 Desafio Técnico Sensedia | API de Consentimentos
+# 📘 Desafio Técnico| API de Consentimentos
 
 ## 👋 Visão Geral
-Este projeto foi desenvolvido como parte de um **desafio técnico da Sensedia** 💙.
+Este projeto foi desenvolvido como parte de um **desafio técnico** 💙.
 
 A proposta é disponibilizar uma API REST para gerenciamento de consentimentos de uso de dados, com foco em:
 
@@ -228,7 +228,7 @@ src/main/java/top/lmix/consentimento
 
 ## 🙌 Considerações Finais
 
-Este projeto busca entregar uma solução simples, objetiva e consistente para o desafio técnico da Sensedia, aplicando fundamentos importantes de engenharia de software como:
+Este projeto busca entregar uma solução simples, objetiva e consistente para o desafio técnico, aplicando fundamentos importantes de engenharia de software como:
 
 - clareza de responsabilidades
 - integridade de dados
